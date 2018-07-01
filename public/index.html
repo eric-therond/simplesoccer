@@ -1,0 +1,47 @@
+<!doctype html>
+<!--[if lt IE 7]>      <html class="lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
+<!--[if IE 7]>         <html class="lt-ie9 lt-ie8"> <![endif]-->
+<!--[if IE 8]>         <html class="lt-ie9"> <![endif]-->
+<!--[if gt IE 8]><!--> <html> <!--<![endif]-->
+<head>
+    <title>MMO demo</title>
+    <link href="styles/client.css" rel="stylesheet" type="text/css">
+</head>
+<body>
+
+<script src="js/vendor.js"></script>
+<script src="js/client.js"></script>
+
+<script>
+    var gameBoot = require('client/gameBoot');
+	var game = new gameBoot();
+</script>
+
+<table width=100%>
+<tr>
+<td width=75%>
+<div id="phaser-example"></div>
+</td>
+<td valign=top align=left>
+<input type=text id="input_MAP_SIZE_WIDTH" value=840><br>
+<input type=text id="input_MAP_SIZE_HEIGHT" value=600><br>
+<input type=text id="input_BallSize" value=20><br>
+<input type=text id="input_BallMass" value=2><br>
+</td>
+</tr>
+</table>
+
+<div id="player" style="display:none">
+<table width=100%>
+<tr>
+<td width=100%>
+Salut
+</td>
+</td>
+</tr>
+</table>
+</div>
+
+
+</body>
+</html>
