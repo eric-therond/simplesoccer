@@ -1,43 +1,18 @@
-(function () {
+(function() {
   'use strict';
 
-  var globals = typeof window === 'undefined' ? global : window;
+  var globals = typeof global === 'undefined' ? self : global;
   if (typeof globals.require === 'function') return;
 
   var modules = {};
   var cache = {};
   var aliases = {};
-  var has = ({}).hasOwnProperty;
+  var has = {}.hasOwnProperty;
 
-  var endsWith = function (str, suffix) {
-    return str.indexOf(suffix, str.length - suffix.length) !== -1;
-  };
-
-  var _cmp = 'components/';
-  var unalias = function (alias, loaderPath) {
-    var start = 0;
-    if (loaderPath) {
-      if (loaderPath.indexOf(_cmp) === 0) {
-        start = _cmp.length;
-      }
-
-      if (loaderPath.indexOf('/', start) > 0) {
-        loaderPath = loaderPath.substring(start, loaderPath.indexOf('/', start));
-      }
-    }
-
-    var result = aliases[alias + '/index.js'] || aliases[loaderPath + '/deps/' + alias + '/index.js'];
-    if (result) {
-      return _cmp + result.substring(0, result.length - '.js'.length);
-    }
-
-    return alias;
-  };
-
-  var _reg = /^\.\.?(\/|$)/;
-  var expand = function (root, name) {
+  var expRe = /^\.\.?(\/|$)/;
+  var expand = function(root, name) {
     var results = [], part;
-    var parts = (_reg.test(name) ? root + '/' + name : name).split('/');
+    var parts = (expRe.test(name) ? root + '/' + name : name).split('/');
     for (var i = 0, length = parts.length; i < length; i++) {
       part = parts[i];
       if (part === '..') {
@@ -46,75 +21,133 @@
         results.push(part);
       }
     }
-
     return results.join('/');
   };
 
-  var dirname = function (path) {
+  var dirname = function(path) {
     return path.split('/').slice(0, -1).join('/');
   };
 
-  var localRequire = function (path) {
+  var localRequire = function(path) {
     return function expanded(name) {
       var absolute = expand(dirname(path), name);
       return globals.require(absolute, path);
     };
   };
 
-  var initModule = function (name, definition) {
-    var module = { id: name, exports: {} };
+  var initModule = function(name, definition) {
+    var hot = hmr && hmr.createHot(name);
+    var module = {id: name, exports: {}, hot: hot};
     cache[name] = module;
     definition(module.exports, localRequire(name), module);
     return module.exports;
   };
 
-  var require = function (name, loaderPath) {
-    var path = expand(name, '.');
+  var expandAlias = function(name) {
+    return aliases[name] ? expandAlias(aliases[name]) : name;
+  };
+
+  var _resolve = function(name, dep) {
+    return expandAlias(expand(dirname(name), dep));
+  };
+
+  var require = function(name, loaderPath) {
     if (loaderPath == null) loaderPath = '/';
-    path = unalias(name, loaderPath);
+    var path = expandAlias(name);
 
     if (has.call(cache, path)) return cache[path].exports;
     if (has.call(modules, path)) return initModule(path, modules[path]);
 
-    var dirIndex = expand(path, './index');
-    if (has.call(cache, dirIndex)) return cache[dirIndex].exports;
-    if (has.call(modules, dirIndex)) return initModule(dirIndex, modules[dirIndex]);
-
-    throw new Error('Cannot find module "' + name + '" from ' + '"' + loaderPath + '"');
+    throw new Error("Cannot find module '" + name + "' from '" + loaderPath + "'");
   };
 
-  require.alias = function (from, to) {
+  require.alias = function(from, to) {
     aliases[to] = from;
   };
 
-  require.register = require.define = function (bundle, fn) {
-    if (typeof bundle === 'object') {
+  var extRe = /\.[^.\/]+$/;
+  var indexRe = /\/index(\.[^\/]+)?$/;
+  var addExtensions = function(bundle) {
+    if (extRe.test(bundle)) {
+      var alias = bundle.replace(extRe, '');
+      if (!has.call(aliases, alias) || aliases[alias].replace(extRe, '') === alias + '/index') {
+        aliases[alias] = bundle;
+      }
+    }
+
+    if (indexRe.test(bundle)) {
+      var iAlias = bundle.replace(indexRe, '');
+      if (!has.call(aliases, iAlias)) {
+        aliases[iAlias] = bundle;
+      }
+    }
+  };
+
+  require.register = require.define = function(bundle, fn) {
+    if (bundle && typeof bundle === 'object') {
       for (var key in bundle) {
         if (has.call(bundle, key)) {
-          modules[key] = bundle[key];
+          require.register(key, bundle[key]);
         }
       }
     } else {
       modules[bundle] = fn;
+      delete cache[bundle];
+      addExtensions(bundle);
     }
   };
 
-  require.list = function () {
-    var result = [];
+  require.list = function() {
+    var list = [];
     for (var item in modules) {
       if (has.call(modules, item)) {
-        result.push(item);
+        list.push(item);
       }
     }
-
-    return result;
+    return list;
   };
 
-  require.brunch = true;
+  var hmr = globals._hmr && new globals._hmr(_resolve, require, modules, cache);
   require._cache = cache;
+  require.hmr = hmr && hmr.wrap;
+  require.brunch = true;
   globals.require = require;
 })();
-require.register("client/AutoList", function(exports, require, module) {
+
+(function() {
+var global = typeof window === 'undefined' ? this : window;
+var __makeRelativeRequire = function(require, mappings, pref) {
+  var none = {};
+  var tryReq = function(name, pref) {
+    var val;
+    try {
+      val = require(pref + '/node_modules/' + name);
+      return val;
+    } catch (e) {
+      if (e.toString().indexOf('Cannot find module') === -1) {
+        throw e;
+      }
+
+      if (pref.indexOf('node_modules') !== -1) {
+        var s = pref.split('/');
+        var i = s.lastIndexOf('node_modules');
+        var newPref = s.slice(0, i).join('/');
+        return tryReq(name, newPref);
+      }
+    }
+    return none;
+  };
+  return function(name) {
+    if (name in mappings) name = mappings[name];
+    if (!name) return;
+    if (name[0] !== '.' && pref) {
+      var val = tryReq(name, pref);
+      if (val !== none) return val;
+    }
+    return require(name);
+  }
+};
+require.register("client/AutoList.js", function(exports, require, module) {
 'use strict';
 
 class AutoList
@@ -144,7 +177,7 @@ module.exports.AutoList = ListMembers;
 
 });
 
-require.register("client/BaseGameEntity", function(exports, require, module) {
+require.register("client/BaseGameEntity.js", function(exports, require, module) {
 'use strict';
 
 var m_iNextValidID = 0;
@@ -256,7 +289,7 @@ module.exports.BaseGameEntity = BaseGameEntity;
 
 });
 
-require.register("client/ColorTeam", function(exports, require, module) {
+require.register("client/ColorTeam.js", function(exports, require, module) {
 'use strict';
 
 var ColorTeam = {
@@ -268,7 +301,7 @@ module.exports.ColorTeam = ColorTeam;
 
 });
 
-require.register("client/EntityManager", function(exports, require, module) {
+require.register("client/EntityManager.js", function(exports, require, module) {
 'use strict';
 
 class EntityManager
@@ -313,7 +346,7 @@ module.exports.GLOBAL_EntityManager = GLOBAL_EntityManager;
 
 });
 
-require.register("client/FieldPlayer", function(exports, require, module) {
+require.register("client/FieldPlayer.js", function(exports, require, module) {
 'use strict';
 
 var PlayerBaseExports = require('./PlayerBase');
@@ -495,7 +528,7 @@ module.exports.FieldPlayer = FieldPlayer;
 
 });
 
-require.register("client/FieldPlayerStates", function(exports, require, module) {
+require.register("client/FieldPlayerStates.js", function(exports, require, module) {
 'use strict';
 
 var StateExports = require('./State');
@@ -1239,7 +1272,7 @@ module.exports.ReceiveBall = ReceiveBall;
 
 });
 
-require.register("client/Goal", function(exports, require, module) {
+require.register("client/Goal.js", function(exports, require, module) {
 'use strict';
 
 class Goal
@@ -1302,7 +1335,7 @@ module.exports.Goal = Goal;
 
 });
 
-require.register("client/Goalkeeper", function(exports, require, module) {
+require.register("client/Goalkeeper.js", function(exports, require, module) {
 'use strict';
 
 var PlayerBaseExports = require('./PlayerBase');
@@ -1470,7 +1503,7 @@ module.exports.Goalkeeper = Goalkeeper;
 
 });
 
-require.register("client/GoalkeeperStates", function(exports, require, module) {
+require.register("client/GoalkeeperStates.js", function(exports, require, module) {
 'use strict';
 
 var StateExports = require('./State');
@@ -1803,7 +1836,7 @@ module.exports.PutBallBackInPlay = PutBallBackInPlay;
 
 });
 
-require.register("client/MessageDispatcher", function(exports, require, module) {
+require.register("client/MessageDispatcher.js", function(exports, require, module) {
 'use strict';
 
 var EntityManagerExports = require('./EntityManager');
@@ -1908,7 +1941,7 @@ module.exports.GLOBAL_MessageDispatcher = GLOBAL_MessageDispatcher;
 
 });
 
-require.register("client/MovingEntity", function(exports, require, module) {
+require.register("client/MovingEntity.js", function(exports, require, module) {
 'use strict';
 
 var BaseGameEntityExports = require('./BaseGameEntity');
@@ -2056,7 +2089,7 @@ module.exports.MovingEntity = MovingEntity;
 
 });
 
-require.register("client/Params", function(exports, require, module) {
+require.register("client/Params.js", function(exports, require, module) {
 'use strict';
 
 module.exports.GAME_WIDTH = 684;
@@ -2112,7 +2145,7 @@ module.exports.PlayerKickFrequency = 8;
 
 });
 
-require.register("client/PlayerBase", function(exports, require, module) {
+require.register("client/PlayerBase.js", function(exports, require, module) {
 'use strict';
 
 var Params = require('./Params');
@@ -2438,7 +2471,7 @@ module.exports.PlayerBaseEnum = PlayerBaseEnum;
 
 });
 
-require.register("client/PrecisionTimer", function(exports, require, module) {
+require.register("client/PrecisionTimer.js", function(exports, require, module) {
 'use strict';
 
 var Params = require('./Params');
@@ -2560,7 +2593,7 @@ module.exports.PrecisionTimer = PrecisionTimer;
 
 });
 
-require.register("client/Region", function(exports, require, module) {
+require.register("client/Region.js", function(exports, require, module) {
 'use strict';
 
 var region_modifier = {
@@ -2743,7 +2776,7 @@ module.exports.region_modifier = region_modifier;
 
 });
 
-require.register("client/Regulator", function(exports, require, module) {
+require.register("client/Regulator.js", function(exports, require, module) {
 'use strict';
 
 function getRandomArbitrary(min, max)
@@ -2808,7 +2841,7 @@ module.exports.Regulator = Regulator;
 
 });
 
-require.register("client/SoccerBall", function(exports, require, module) {
+require.register("client/SoccerBall.js", function(exports, require, module) {
 'use strict';
 
 var MovingEntityExports = require('./MovingEntity');
@@ -3136,7 +3169,7 @@ module.exports.SoccerBall = SoccerBall;
 
 });
 
-require.register("client/SoccerMessages", function(exports, require, module) {
+require.register("client/SoccerMessages.js", function(exports, require, module) {
 'use strict';
 
 var MessageType = {
@@ -3183,7 +3216,7 @@ module.exports.MessageType = MessageType;
 
 });
 
-require.register("client/SoccerPitch", function(exports, require, module) {
+require.register("client/SoccerPitch.js", function(exports, require, module) {
 'use strict';
 
 var RegionExports = require('./Region');
@@ -3490,7 +3523,7 @@ surface de but = 5,5
 
 });
 
-;require.register("client/SoccerTeam", function(exports, require, module) {
+;require.register("client/SoccerTeam.js", function(exports, require, module) {
 "use strict"; 
 
 var StateMachineExports = require('./StateMachine');
@@ -4281,7 +4314,7 @@ module.exports.SoccerTeam = SoccerTeam;
 
 });
 
-require.register("client/State", function(exports, require, module) {
+require.register("client/State.js", function(exports, require, module) {
 'use strict';
 
 class State
@@ -4302,7 +4335,7 @@ module.exports.State = State;
 
 });
 
-require.register("client/StateMachine", function(exports, require, module) {
+require.register("client/StateMachine.js", function(exports, require, module) {
 'use strict';
 
 class StateMachine
@@ -4414,7 +4447,7 @@ module.exports.StateMachine = StateMachine;
 
 });
 
-require.register("client/SteeringBehaviors", function(exports, require, module) {
+require.register("client/SteeringBehaviors.js", function(exports, require, module) {
 'use strict';
 
 var Params = require('./Params');
@@ -4869,7 +4902,7 @@ module.exports.SteeringBehaviors = SteeringBehaviors;
 
 });
 
-require.register("client/SupportSpotCalculator", function(exports, require, module) {
+require.register("client/SupportSpotCalculator.js", function(exports, require, module) {
 'use strict';
 
 var RegulatorExports = require('./Regulator');
@@ -5061,7 +5094,7 @@ module.exports.SupportSpotCalculator = SupportSpotCalculator;
 
 });
 
-require.register("client/TeamStates", function(exports, require, module) {
+require.register("client/TeamStates.js", function(exports, require, module) {
 'use strict';
 
 var ColorTeamExports = require('./ColorTeam');
@@ -5228,7 +5261,7 @@ module.exports.PrepareForKickOff = PrepareForKickOff;
 
 });
 
-require.register("client/Telegram", function(exports, require, module) {
+require.register("client/Telegram.js", function(exports, require, module) {
 'use strict';
 
 class Telegram
@@ -5247,7 +5280,7 @@ module.exports.Telegram = Telegram;
 
 });
 
-require.register("client/Transformations", function(exports, require, module) {
+require.register("client/Transformations.js", function(exports, require, module) {
 'use strict';
 
 class Transformations
@@ -5332,7 +5365,7 @@ module.exports.Transformations = Transformations;
 
 });
 
-require.register("client/Wall2D", function(exports, require, module) {
+require.register("client/Wall2D.js", function(exports, require, module) {
 'use strict';
 
 class Wall2D
@@ -5400,7 +5433,7 @@ module.exports.Wall2D = Wall2D;
 
 });
 
-require.register("client/gameBoot", function(exports, require, module) {
+require.register("client/gameBoot.js", function(exports, require, module) {
 'use strict';
 
 var SoccerPitchExports = require('./SoccerPitch');
@@ -5475,6 +5508,10 @@ class gameBoot
 module.exports = gameBoot;
 
 });
+
+require.register("___globals___", function(exports, require, module) {
+  
+});})();require('___globals___');
 
 
 //# sourceMappingURL=client.js.map

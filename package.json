@@ -1,16 +1,13 @@
 {
-  "name": "mmo_demo",
-  "version": "1.0.0",
-  "description": "mmo example with phaser express and socket.io",
-  "author": "Marwane",
-  "license": "ISC",
+  "name": "simplesoccer",
+  "version": "0.1.0",
+  "description": "simplesoccer",
+  "author": "eric.therond.fr@gmail.com",
+  "license": "MIT",
   "devDependencies": {
-    "auto-reload-brunch": "^1.8.0",
-    "brunch": "^1.8.5",
-    "javascript-brunch": "^1.7.1",
-    "less-brunch": "^1.8.1"
-  },
-  "dependencies": {
-    "path": "^0.12.7"
+    "auto-reload-brunch": "^2.7.1",
+    "brunch": "^2.10.17",
+    "less-brunch": "^2.10.0",
+    "javascript-brunch": "^2.10.0"
   }
 }

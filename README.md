@@ -4,3 +4,10 @@ http://www.ai-junkie.com/books/toc_pgaibe.html
 
 ## Demo
 <img src="demo.gif" alt="demo" width="100%">
+
+## Usage
+```bash
+npm install -g brunch
+brunch w --server
+```
+The application will be available at http://localhost:9192
